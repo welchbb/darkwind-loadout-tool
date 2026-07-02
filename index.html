@@ -721,7 +721,7 @@
   function showDepFeedback(added, rootKey){
     const el = document.getElementById('ex-dep-feedback');
     const extras = added.filter(k => k !== rootKey);
-    if (extras.length === 0){ el.classList.remove('show'); return; }
+    if (extras.length === 0) return; // nothing new to report — leave any prior message showing
     const labels = extras.map(k => (ex.depMeta.get(k) || {}).label || k);
     el.innerHTML = `<span class="prompt">&gt;</span> also included ${extras.length} related item${extras.length === 1 ? '' : 's'}: ${labels.map(escapeHtml).join(', ')}`;
     el.classList.add('show');
