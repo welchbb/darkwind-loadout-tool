@@ -215,6 +215,7 @@
   .item-deps .dep-ok{ color: var(--text-dim); }
   .item-deps .dep-missing{ color: var(--red); }
   .item-deps .dep-missing::after{ content: ' (not included)'; font-style: italic; }
+  .item-deps .dep-optional{ color: var(--text-faint); }
 
   button{
     font-family: var(--font-sans);
@@ -426,6 +427,7 @@
         <div class="toolbar">
           <input class="search" id="ex-search" placeholder="Filter by name or description…" />
           <label class="dep-toggle"><input type="checkbox" id="ex-auto-deps" checked /> Auto-include dependencies</label>
+          <label class="dep-toggle"><input type="checkbox" id="ex-reverse-deps" /> Also include dependents</label>
           <div class="spacer"></div>
           <button class="ghost tiny" id="ex-select-none">Deselect all</button>
         </div>
@@ -592,7 +594,8 @@
   }
 
   function buildDependencyGraph(json){
-    const graph = new Map(); // itemKey -> Set(itemKey)
+    const graph = new Map();        // itemKey -> Set(itemKey it needs)
+    const reverseGraph = new Map(); // itemKey -> Set(itemKey that needs it)
     const meta = new Map();  // itemKey -> { label, category }
     const scopes = new Set();
     CATEGORY_DEFS.forEach(def => Object.keys(scopedItems(json, def.key)).forEach(s => scopes.add(s)));
@@ -655,11 +658,17 @@
             if (depKey && depKey !== key) deps.add(depKey);
           });
         });
-        if (deps.size > 0) graph.set(key, deps);
+        if (deps.size > 0){
+          graph.set(key, deps);
+          deps.forEach(d => {
+            if (!reverseGraph.has(d)) reverseGraph.set(d, new Set());
+            reverseGraph.get(d).add(key);
+          });
+        }
       });
     });
 
-    return { graph, meta };
+    return { graph, reverseGraph, meta };
   }
 
   /* ================================================================
@@ -673,12 +682,17 @@
     collapsed: new Set(),  // keys: `${category}::${scope}::${group}`
     search: '',
     depGraph: new Map(),
+    reverseGraph: new Map(),
     depMeta: new Map(),
     autoDeps: true,
+    reverseDeps: false,
   };
 
-  // Adds `key` to the selection, and — if autoDeps is on — walks its
-  // dependency graph breadth-first, pulling in anything it needs.
+  // Adds `key` to the selection, then breadth-first walks whichever graphs are
+  // enabled: depGraph (autoDeps — what this item needs) and/or reverseGraph
+  // (reverseDeps — what needs this item). Both toggles cascade transitively
+  // and independently, so e.g. a dependent pulled in by reverseDeps still has
+  // its own forward deps pulled in if autoDeps is also on.
   // Returns the list of keys newly added (key included, in BFS order).
   function selectWithDeps(key){
     const added = [];
@@ -692,9 +706,14 @@
         ex.selections.add(k);
         added.push(k);
       }
-      if (!ex.autoDeps) break; // only the item itself, no cascade
-      const deps = ex.depGraph.get(k);
-      if (deps) deps.forEach(d => { if (!seen.has(d)) queue.push(d); });
+      if (ex.autoDeps){
+        const deps = ex.depGraph.get(k);
+        if (deps) deps.forEach(d => { if (!seen.has(d)) queue.push(d); });
+      }
+      if (ex.reverseDeps){
+        const dependents = ex.reverseGraph.get(k);
+        if (dependents) dependents.forEach(d => { if (!seen.has(d)) queue.push(d); });
+      }
     }
     return added;
   }
@@ -704,7 +723,7 @@
     const extras = added.filter(k => k !== rootKey);
     if (extras.length === 0){ el.classList.remove('show'); return; }
     const labels = extras.map(k => (ex.depMeta.get(k) || {}).label || k);
-    el.innerHTML = `<span class="prompt">&gt;</span> also included ${extras.length} dependenc${extras.length === 1 ? 'y' : 'ies'}: ${labels.map(escapeHtml).join(', ')}`;
+    el.innerHTML = `<span class="prompt">&gt;</span> also included ${extras.length} related item${extras.length === 1 ? '' : 's'}: ${labels.map(escapeHtml).join(', ')}`;
     el.classList.add('show');
   }
 
@@ -738,8 +757,9 @@
       ex.selections = new Set();
       ex.activeCat = CATEGORY_DEFS[0].key;
       ex.collapsed = new Set();
-      const { graph, meta } = buildDependencyGraph(json);
+      const { graph, reverseGraph, meta } = buildDependencyGraph(json);
       ex.depGraph = graph;
+      ex.reverseGraph = reverseGraph;
       ex.depMeta = meta;
       exLabel.value = ex.fileLabel;
 
@@ -861,7 +881,7 @@
           if (shouldSelect && extraDeps.length > 0){
             const el = document.getElementById('ex-dep-feedback');
             const labels = extraDeps.map(k => (ex.depMeta.get(k) || {}).label || k);
-            el.innerHTML = `<span class="prompt">&gt;</span> also included ${extraDeps.length} dependenc${extraDeps.length === 1 ? 'y' : 'ies'}: ${labels.map(escapeHtml).join(', ')}`;
+            el.innerHTML = `<span class="prompt">&gt;</span> also included ${extraDeps.length} related item${extraDeps.length === 1 ? '' : 's'}: ${labels.map(escapeHtml).join(', ')}`;
             el.classList.add('show');
           }
           renderExtractCatTabs(); renderExtractGroups(); updateExtractFooter();
@@ -885,7 +905,17 @@
               const missing = !ex.selections.has(d);
               return `<span class="${missing ? 'dep-missing' : 'dep-ok'}">${escapeHtml(label)}</span>`;
             });
-            depsHtml = `<div class="item-deps">needs: ${parts.join(', ')}</div>`;
+            depsHtml += `<div class="item-deps">needs: ${parts.join(', ')}</div>`;
+          }
+          const dependents = ex.reverseGraph.get(key);
+          if (dependents && dependents.size > 0){
+            const parts = [...dependents].map(d => {
+              const m = ex.depMeta.get(d);
+              const label = m ? m.label : d;
+              const included = ex.selections.has(d);
+              return `<span class="${included ? 'dep-ok' : 'dep-optional'}">${escapeHtml(label)}</span>`;
+            });
+            depsHtml += `<div class="item-deps">needed by: ${parts.join(', ')}</div>`;
           }
 
           row.innerHTML = `
@@ -943,6 +973,10 @@
 
   document.getElementById('ex-auto-deps').addEventListener('change', (e) => {
     ex.autoDeps = e.target.checked;
+  });
+
+  document.getElementById('ex-reverse-deps').addEventListener('change', (e) => {
+    ex.reverseDeps = e.target.checked;
   });
 
   function updateExtractFooter(){
