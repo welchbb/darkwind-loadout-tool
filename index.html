@@ -397,7 +397,7 @@
         <div class="brand-word"><b>loadout</b> transfer</div>
       </div>
       <div class="brand-sub">for <b>Darkwind</b> · darkflow client</div>
-      <div class="brand-version">v0.1.2</div>
+      <div class="brand-version">v0.2.0</div>
     </div>
     <div class="nav">
       <div class="nav-item active" data-panel="extract"><span class="num">01</span> Extract</div>
@@ -442,6 +442,10 @@
         <div class="cat-tabs" id="ex-cat-tabs"></div>
         <div id="ex-groups"></div>
 
+        <div class="toolbar" style="margin-top:0;">
+          <label class="dep-toggle"><input type="checkbox" id="ex-include-clientsetup" /> Also include client setup (settings + panel layout)</label>
+        </div>
+
         <div class="footer-actions">
           <input class="label-input" id="ex-label" placeholder="Export label, e.g. slei-loot-kit" />
           <button class="primary" id="ex-download" disabled>Download selection (0)</button>
@@ -485,6 +489,8 @@
           <button class="tiny" id="mg-bulk-keep">Keep existing</button>
           <button class="tiny" id="mg-bulk-use">Use imported</button>
         </div>
+
+        <div id="mg-clientsetup"></div>
 
         <div class="toolbar" style="margin-top:0;">
           <input class="search" id="mg-search" placeholder="Filter rows…" />
@@ -743,6 +749,7 @@
   const exLabel = document.getElementById('ex-label');
   const exDownloadBtn = document.getElementById('ex-download');
   const exCountHint = document.getElementById('ex-count-hint');
+  const exIncludeClientSetup = document.getElementById('ex-include-clientsetup');
 
   ['dragover','dragenter'].forEach(evt => exDropzone.addEventListener(evt, e => { e.preventDefault(); exDropzone.classList.add('drag'); }));
   ['dragleave','drop'].forEach(evt => exDropzone.addEventListener(evt, e => { e.preventDefault(); exDropzone.classList.remove('drag'); }));
@@ -763,6 +770,7 @@
       ex.selections = new Set();
       ex.activeCat = CATEGORY_DEFS[0].key;
       ex.collapsed = new Set();
+      exIncludeClientSetup.checked = false;
       const { graph, reverseGraph, meta } = buildDependencyGraph(json);
       ex.depGraph = graph;
       ex.reverseGraph = reverseGraph;
@@ -985,15 +993,18 @@
     ex.reverseDeps = e.target.checked;
   });
 
+  exIncludeClientSetup.addEventListener('change', updateExtractFooter);
+
   function updateExtractFooter(){
     const n = ex.selections.size;
-    exDownloadBtn.disabled = n === 0;
+    const canDownload = n > 0 || exIncludeClientSetup.checked;
+    exDownloadBtn.disabled = !canDownload;
     exDownloadBtn.textContent = `Download selection (${n})`;
-    exCountHint.textContent = n === 0 ? 'Select at least one item to export.' : '';
+    exCountHint.textContent = canDownload ? '' : 'Select at least one item to export.';
   }
 
   exDownloadBtn.addEventListener('click', () => {
-    if (ex.selections.size === 0) return;
+    if (ex.selections.size === 0 && !exIncludeClientSetup.checked) return;
     const output = {
       format: EXPECTED_FORMAT,
       formatVersion: ex.source.formatVersion || 1,
@@ -1016,6 +1027,10 @@
         output.data[def.path] = { scopes: outScopes };
       }
     });
+    if (exIncludeClientSetup.checked){
+      if (ex.source.data.settings) output.data.settings = deepClone(ex.source.data.settings);
+      if (ex.source.data.panels) output.data.panels = deepClone(ex.source.data.panels);
+    }
     const filename = `${slugify(exLabel.value.trim() || ex.fileLabel)}-loadout-${new Date().toISOString().slice(0,10)}.json`;
     download(filename, output);
   });
@@ -1028,6 +1043,7 @@
     baseFilename: '',
     imports: [], // { fileName, data }
     rows: [],    // computed rows, see computeMergeRows()
+    clientSetupRows: [], // wholesale settings+panels rows, see computeClientSetupRows()
     resolutions: new Map(), // rowKey -> 'keep-existing' | 'use-imported' | 'include' | 'exclude'
     search: '',
   };
@@ -1185,16 +1201,66 @@
     return row.type === 'conflict' ? 'keep-existing' : 'include';
   }
 
+  // Settings and panels are copied wholesale (not picked item-by-item like the
+  // other categories) — one row per import file that actually carries either,
+  // since only files extracted with "include client setup" checked will.
+  function computeClientSetupRows(){
+    const rows = [];
+    mg.imports.forEach(imp => {
+      const settings = imp.data.data && imp.data.data.settings;
+      const panels = imp.data.data && imp.data.data.panels;
+      if (!settings && !panels) return;
+      rows.push({ rowKey: `clientSetup::${imp.fileName}`, sourceFile: imp.fileName, settings, panels });
+    });
+    return rows;
+  }
+
   function recomputeAndRenderMerge(){
     mg.rows = computeMergeRows();
+    mg.clientSetupRows = computeClientSetupRows();
     // seed resolutions for new rows, keep existing choices for rows still present
-    const stillPresent = new Set(mg.rows.map(r => r.rowKey));
+    const stillPresent = new Set([...mg.rows.map(r => r.rowKey), ...mg.clientSetupRows.map(r => r.rowKey)]);
     [...mg.resolutions.keys()].forEach(k => { if (!stillPresent.has(k)) mg.resolutions.delete(k); });
     mg.rows.forEach(r => { if (!mg.resolutions.has(r.rowKey)) mg.resolutions.set(r.rowKey, defaultResolution(r)); });
+    mg.clientSetupRows.forEach(r => { if (!mg.resolutions.has(r.rowKey)) mg.resolutions.set(r.rowKey, 'keep-existing'); });
 
-    mgReview.style.display = mg.rows.length > 0 ? 'block' : (mg.imports.length > 0 ? 'block' : 'none');
+    mgReview.style.display = (mg.rows.length > 0 || mg.clientSetupRows.length > 0) ? 'block' : (mg.imports.length > 0 ? 'block' : 'none');
     renderMergeSummary();
+    renderClientSetupRows();
     renderMergeRows();
+  }
+
+  function renderClientSetupRows(){
+    const el = document.getElementById('mg-clientsetup');
+    el.innerHTML = '';
+    mg.clientSetupRows.forEach(row => {
+      const resolution = mg.resolutions.get(row.rowKey) || 'keep-existing';
+      const parts = [];
+      if (row.settings) parts.push('client prefs + key mappings');
+      if (row.panels) parts.push('panel layout');
+      const block = document.createElement('div');
+      block.className = 'row-block conflict';
+      block.innerHTML = `
+        <div class="row-top">
+          <div>
+            <div class="row-cat" style="color:var(--amber)">CLIENT SETUP</div>
+            <div class="row-title">Settings &amp; panels</div>
+            <div class="row-src">from ${escapeHtml(row.sourceFile)} — includes ${parts.join(' and ')}</div>
+          </div>
+          <div class="choice">
+            <button data-choice="keep-existing" class="${resolution === 'keep-existing' ? 'on' : ''}">Keep existing</button>
+            <button data-choice="use-imported" class="${resolution === 'use-imported' ? 'on' : ''}">Use imported</button>
+          </div>
+        </div>
+      `;
+      block.querySelectorAll('.choice button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          mg.resolutions.set(row.rowKey, btn.dataset.choice);
+          renderClientSetupRows();
+        });
+      });
+      el.appendChild(block);
+    });
   }
 
   function renderMergeSummary(){
@@ -1369,6 +1435,15 @@
         if (!output.data[def.path].scopes[scopeUrl]) output.data[def.path].scopes[scopeUrl] = {};
         output.data[def.path].scopes[scopeUrl][def.listKey] = finalItems[ck];
       });
+    });
+
+    // settings/panels are copied wholesale, not merged item-by-item
+    mg.clientSetupRows.forEach(row => {
+      const resolution = mg.resolutions.get(row.rowKey) || 'keep-existing';
+      if (resolution === 'use-imported'){
+        if (row.settings) output.data.settings = deepClone(row.settings);
+        if (row.panels) output.data.panels = deepClone(row.panels);
+      }
     });
 
     output.exportedAt = new Date().toISOString();
