@@ -357,6 +357,7 @@
   .row-block.newitem{ border-left: 3px solid var(--ok); }
   .row-top{ display:flex; justify-content:space-between; align-items:flex-start; gap: 14px; }
   .row-title{ font-family: var(--font-mono); font-size: 13px; color: var(--text); }
+  .row-title .id-suffix{ color: var(--text-faint); font-size: 11px; }
   .row-cat{ font-size: 10.5px; color: var(--text-faint); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px; }
   .row-src{ font-size: 11.5px; color: var(--text-faint); margin-top: 3px; }
   .choice{ display:flex; gap: 6px; flex-shrink:0; }
@@ -396,7 +397,7 @@
         <div class="brand-word"><b>loadout</b> transfer</div>
       </div>
       <div class="brand-sub">for <b>Darkwind</b> · darkflow client</div>
-      <div class="brand-version">v0.1.1</div>
+      <div class="brand-version">v0.1.2</div>
     </div>
     <div class="nav">
       <div class="nav-item active" data-panel="extract"><span class="num">01</span> Extract</div>
@@ -1235,6 +1236,23 @@
       return;
     }
 
+    // Distinct items can legitimately share display text (see computeMergeRows) — when
+    // that happens, append a short id suffix so rows that look identical in this list
+    // (e.g. two different triggers both named "You killed %1.") stay distinguishable.
+    const nameCounts = new Map();
+    mg.rows.forEach(r => {
+      const d = catDef(r.category);
+      const k = `${r.category}::${r.scope}::${normKey(itemDisplayName(d, r.item))}`;
+      nameCounts.set(k, (nameCounts.get(k) || 0) + 1);
+    });
+    function rowTitleHtml(row){
+      const d = catDef(row.category);
+      const name = itemDisplayName(d, row.item);
+      const k = `${row.category}::${row.scope}::${normKey(name)}`;
+      const ambiguous = nameCounts.get(k) > 1;
+      return escapeHtml(name) + (ambiguous ? ` <span class="id-suffix">#${row.item.id.slice(-6)}</span>` : '');
+    }
+
     filtered.forEach(row => {
       const def = catDef(row.category);
       const el = document.createElement('div');
@@ -1246,7 +1264,7 @@
           <div class="row-top">
             <div>
               <div class="row-cat" style="color:${def.color}">${def.label}</div>
-              <div class="row-title">${escapeHtml(itemDisplayName(def, row.item))}</div>
+              <div class="row-title">${rowTitleHtml(row)}</div>
               <div class="row-src">from ${escapeHtml(row.sourceFile)} — conflicts with ${row.existingSource === 'base' ? 'existing item' : 'an earlier loadout file'}</div>
             </div>
             <div class="choice">
@@ -1270,7 +1288,7 @@
           <div class="row-top">
             <div>
               <div class="row-cat" style="color:${def.color}">${def.label}</div>
-              <div class="row-title">${escapeHtml(itemDisplayName(def, row.item))}</div>
+              <div class="row-title">${rowTitleHtml(row)}</div>
               <div class="row-src">from ${escapeHtml(row.sourceFile)} — new, no conflict</div>
             </div>
             <div class="choice">
