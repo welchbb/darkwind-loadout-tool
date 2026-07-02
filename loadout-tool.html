@@ -1,0 +1,1337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Loadout Transfer — Darkwind</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #12141a;
+    --bg-alt: #0d0f14;
+    --surface: #1a1d26;
+    --surface-raised: #222633;
+    --surface-hover: #282d3d;
+    --border: #313747;
+    --border-soft: #262b38;
+    --text: #e9e7e0;
+    --text-dim: #9a9eac;
+    --text-faint: #666b7a;
+    --amber: #d99a3d;
+    --amber-dim: #a8823f;
+    --teal: #4fb8ac;
+    --red: #c1594f;
+    --violet: #8b7fd6;
+    --blue: #5b9bd5;
+    --ok: #5fa872;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --radius: 6px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; }
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+  }
+  @media (prefers-reduced-motion: reduce){
+    * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  a { color: var(--amber); }
+
+  /* ---------- layout shell ---------- */
+  .app{ display:flex; min-height:100vh; }
+
+  .rail{
+    width: 220px;
+    flex-shrink:0;
+    background: var(--bg-alt);
+    border-right: 1px solid var(--border-soft);
+    padding: 22px 16px;
+    display:flex;
+    flex-direction:column;
+    gap: 26px;
+  }
+  .brand{
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    line-height:1.5;
+  }
+  .brand b{ color: var(--text); font-weight:600; }
+  .brand .dot{ color: var(--amber); }
+  .brand-row{ display:flex; align-items:center; gap:9px; }
+  .brand-icon{
+    width: 26px; height: 26px; border-radius: 6px;
+    box-shadow: 0 0 0 1px var(--border);
+    flex-shrink: 0;
+  }
+  .brand-word{ font-size: 13px; }
+  .brand-sub{
+    margin-top: 8px; font-size: 11px; color: var(--text-faint);
+    letter-spacing: 0.03em;
+  }
+  .brand-sub b{ color: var(--text-dim); font-weight: 600; }
+
+  .nav{ display:flex; flex-direction:column; gap:4px; }
+  .nav-item{
+    display:flex; align-items:baseline; gap:10px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    cursor:pointer;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+    font-size: 13.5px;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  }
+  .nav-item .num{ font-family: var(--font-mono); font-size:11px; color: var(--text-faint); }
+  .nav-item:hover{ background: var(--surface); color: var(--text); }
+  .nav-item.active{
+    background: var(--surface-raised);
+    color: var(--text);
+    border-color: var(--border);
+  }
+  .nav-item.active .num{ color: var(--amber); }
+
+  .rail-foot{
+    margin-top: auto;
+    font-size: 11.5px;
+    color: var(--text-faint);
+    line-height:1.6;
+    font-family: var(--font-mono);
+  }
+  .foot-art{
+    width: 100%; aspect-ratio: 16/9;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border-soft);
+    margin-bottom: 10px;
+    position: relative;
+  }
+  .foot-art::after{
+    content:'';
+    position:absolute; inset:0;
+    background: linear-gradient(180deg, rgba(13,15,20,0.1) 0%, rgba(13,15,20,0.75) 100%);
+  }
+  .foot-art img{ width:100%; height:100%; object-fit: cover; display:block; filter: saturate(0.85) brightness(0.85); }
+
+  .main{ flex:1; padding: 34px 40px 60px; max-width: 1180px; }
+  .panel{ display:none; }
+  .panel.active{ display:block; animation: fadein 0.25s ease; }
+  @keyframes fadein{ from{ opacity:0; transform: translateY(4px);} to{ opacity:1; transform:none; } }
+
+  h1{
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight:600;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+  .subtitle{ color: var(--text-dim); font-size: 14px; margin: 0 0 28px; max-width: 640px; line-height:1.55; }
+
+  /* ---------- dropzone ---------- */
+  .dropzone{
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 28px;
+    display:flex;
+    align-items:center;
+    gap: 18px;
+    cursor:pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .dropzone:hover, .dropzone.drag{
+    border-color: var(--amber-dim);
+    background: var(--surface-raised);
+  }
+  .dropzone input{ display:none; }
+  .dz-icon{
+    font-family: var(--font-mono);
+    font-size: 20px;
+    color: var(--amber);
+    width: 44px; height:44px;
+    display:flex; align-items:center; justify-content:center;
+    background: var(--surface-raised);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    flex-shrink:0;
+  }
+  .dz-text b{ display:block; font-size:14px; color: var(--text); margin-bottom:2px; }
+  .dz-text span{ font-size: 12.5px; color: var(--text-faint); }
+
+  /* ---------- terminal readout ---------- */
+  .readout{
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--teal);
+    background: var(--bg-alt);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-top: 14px;
+    white-space: pre-wrap;
+    line-height: 1.7;
+    display:none;
+  }
+  .readout.show{ display:block; }
+  .readout .prompt{ color: var(--amber); }
+  .readout .file{ color: var(--text); }
+
+  /* ---------- toolbar ---------- */
+  .toolbar{
+    display:flex; align-items:center; gap: 10px;
+    margin: 24px 0 14px;
+    flex-wrap: wrap;
+  }
+  .toolbar .spacer{ flex:1; }
+  .search{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 7px 11px;
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    width: 220px;
+  }
+  .search::placeholder{ color: var(--text-faint); }
+  .search:focus{ outline:none; border-color: var(--amber-dim); }
+
+  .dep-toggle{
+    display:flex; align-items:center; gap:7px;
+    font-size: 12.5px; color: var(--text-dim); cursor:pointer;
+    font-family: var(--font-mono); white-space: nowrap;
+  }
+  .dep-toggle input{ accent-color: var(--amber); cursor:pointer; }
+
+  .item-deps{ font-size: 11.5px; color: var(--text-faint); margin-top: 3px; font-family: var(--font-mono); }
+  .item-deps .dep-ok{ color: var(--text-dim); }
+  .item-deps .dep-missing{ color: var(--red); }
+  .item-deps .dep-missing::after{ content: ' (not included)'; font-style: italic; }
+
+  button{
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    padding: 7px 13px;
+    cursor:pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  button:hover{ background: var(--surface-hover); border-color: var(--amber-dim); }
+  button:disabled{ opacity: 0.4; cursor:not-allowed; }
+  button.primary{
+    background: var(--amber);
+    border-color: var(--amber);
+    color: #1a1408;
+    font-weight:600;
+  }
+  button.primary:hover{ background: #e6ab4c; }
+  button.ghost{ background:transparent; border-color: var(--border-soft); color: var(--text-dim); }
+  button.ghost:hover{ color: var(--text); }
+  button.tiny{ padding: 4px 9px; font-size: 11.5px; }
+
+  /* ---------- category tabs (extract) ---------- */
+  .cat-tabs{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom: 16px; }
+  .cat-tab{
+    display:flex; align-items:center; gap:7px;
+    padding: 7px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 12.5px;
+    color: var(--text-dim);
+    cursor:pointer;
+    font-family: var(--font-mono);
+  }
+  .cat-tab .swatch{ width:7px; height:7px; border-radius:50%; }
+  .cat-tab .count{ color: var(--text-faint); }
+  .cat-tab.active{ color: var(--text); background: var(--surface-raised); border-color: var(--border); }
+  .cat-tab.selected-some .count{ color: var(--amber); }
+
+  /* ---------- groups & items ---------- */
+  .group{
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+    overflow:hidden;
+    background: var(--surface);
+  }
+  .group-head{
+    display:flex; align-items:center; gap:10px;
+    padding: 10px 14px;
+    cursor:pointer;
+    user-select:none;
+    background: var(--surface-raised);
+  }
+  .group-head:hover{ background: var(--surface-hover); }
+  .group-head .chev{
+    font-size: 10px; color: var(--text-faint);
+    transition: transform 0.15s ease;
+    width: 10px;
+  }
+  .group.collapsed .chev{ transform: rotate(-90deg); }
+  .group-head .gname{ font-size: 13px; font-weight:600; color: var(--text); flex:1; }
+  .group-head .gname .empty{ color: var(--text-faint); font-weight: 400; font-style: italic; }
+  .group-head .gcount{ font-family: var(--font-mono); font-size:11px; color: var(--text-faint); }
+
+  .group-body{ }
+  .group.collapsed .group-body{ display:none; }
+
+  .item-row{
+    display:flex; align-items:flex-start; gap: 11px;
+    padding: 9px 14px 9px 30px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 13px;
+  }
+  .item-row:hover{ background: var(--surface-hover); }
+  .item-row input[type=checkbox]{ margin-top: 3px; accent-color: var(--amber); cursor:pointer; }
+  .item-main{ flex:1; min-width:0; }
+  .item-name{ font-family: var(--font-mono); color: var(--text); font-size: 13px; word-break: break-word; }
+  .item-name.disabled{ color: var(--text-faint); text-decoration: line-through; }
+  .item-desc{ color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+  .item-tag{
+    font-family: var(--font-mono); font-size: 10.5px; color: var(--text-faint);
+    border: 1px solid var(--border-soft); border-radius: 3px; padding: 1px 5px;
+    margin-left: 8px;
+  }
+
+  .empty-state{
+    text-align:center; padding: 50px 20px; color: var(--text-faint);
+    font-size: 13.5px; border: 1px dashed var(--border-soft); border-radius: var(--radius);
+  }
+
+  /* ---------- merge specific ---------- */
+  .import-list{ display:flex; flex-direction:column; gap:8px; margin-top:14px; }
+  .import-file{
+    display:flex; align-items:center; gap:10px;
+    background: var(--surface); border:1px solid var(--border-soft); border-radius: var(--radius);
+    padding: 9px 13px; font-size: 13px;
+  }
+  .import-file .fname{ font-family: var(--font-mono); color: var(--text); flex:1; }
+  .import-file .fmeta{ color: var(--text-faint); font-size: 11.5px; font-family: var(--font-mono); }
+  .import-file button{ padding: 3px 9px; font-size: 11px; }
+
+  .summary-bar{
+    display:flex; gap: 18px; margin: 18px 0; flex-wrap:wrap;
+  }
+  .summary-chip{
+    display:flex; flex-direction:column; gap:2px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    min-width: 92px;
+  }
+  .summary-chip .n{ font-family: var(--font-mono); font-size: 19px; font-weight:600; color: var(--text); }
+  .summary-chip .l{ font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing:0.04em; }
+  .summary-chip.new .n{ color: var(--ok); }
+  .summary-chip.conflict .n{ color: var(--red); }
+
+  .bulk-row{ display:flex; align-items:center; gap:10px; margin-bottom: 14px; }
+  .bulk-row span{ font-size: 12.5px; color: var(--text-dim); }
+
+  .row-block{
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    background: var(--surface);
+    margin-bottom: 8px;
+    padding: 12px 14px;
+  }
+  .row-block.conflict{ border-left: 3px solid var(--red); }
+  .row-block.newitem{ border-left: 3px solid var(--ok); }
+  .row-top{ display:flex; justify-content:space-between; align-items:flex-start; gap: 14px; }
+  .row-title{ font-family: var(--font-mono); font-size: 13px; color: var(--text); }
+  .row-cat{ font-size: 10.5px; color: var(--text-faint); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px; }
+  .row-src{ font-size: 11.5px; color: var(--text-faint); margin-top: 3px; }
+  .choice{ display:flex; gap: 6px; flex-shrink:0; }
+  .choice button{ padding: 5px 10px; font-size: 12px; }
+  .choice button.on{ background: var(--surface-raised); border-color: var(--amber-dim); color: var(--text); }
+  .row-compare{
+    display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;
+    font-size: 12px;
+  }
+  .row-compare .side{ background: var(--bg-alt); border: 1px solid var(--border-soft); border-radius: 4px; padding: 8px 10px; }
+  .row-compare .side .lbl{ color: var(--text-faint); font-size: 10.5px; text-transform:uppercase; margin-bottom:4px; letter-spacing:0.04em; }
+  .row-compare .side .desc{ color: var(--text-dim); }
+
+  .footer-actions{
+    display:flex; align-items:center; gap: 12px; margin-top: 26px;
+    padding-top: 20px; border-top: 1px solid var(--border-soft);
+  }
+  .label-input{
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 8px 11px; color: var(--text); font-family: var(--font-mono); font-size: 12.5px;
+    width: 280px;
+  }
+  .label-input:focus{ outline:none; border-color: var(--amber-dim); }
+
+  .step-hint{ font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="rail">
+    <div class="brand">
+      <div class="brand-row">
+        <img class="brand-icon" src="https://play.darkwind.ai/assets/brand/darkflow-icon-64.png"
+             alt="Darkflow" onerror="this.style.display='none'; document.getElementById('brand-fallback-dot').style.display='inline';" />
+        <span class="dot" id="brand-fallback-dot" style="display:none;">&gt;</span>
+        <div class="brand-word"><b>loadout</b> transfer</div>
+      </div>
+      <div class="brand-sub">for <b>Darkwind</b> · darkflow client</div>
+    </div>
+    <div class="nav">
+      <div class="nav-item active" data-panel="extract"><span class="num">01</span> Extract</div>
+      <div class="nav-item" data-panel="merge"><span class="num">02</span> Merge</div>
+    </div>
+    <div class="rail-foot">
+      <div class="foot-art">
+        <img src="https://www.darkwind.ai/images/hero-castle-gate.jpg" alt=""
+             onerror="this.parentElement.style.display='none';" />
+      </div>
+      <div>Nothing leaves your browser.<br>All processing is local.</div>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- ================= EXTRACT PANEL ================= -->
+    <div class="panel active" id="panel-extract">
+      <h1>Extract a loadout</h1>
+      <p class="subtitle">Upload one character's full settings export, then pick the aliases, highlights, triggers, timers, or functions you want to carry over. You'll get a small JSON file containing only what you selected.</p>
+
+      <label class="dropzone" id="ex-dropzone">
+        <input type="file" id="ex-file-input" accept="application/json,.json" />
+        <div class="dz-icon">&#9670;</div>
+        <div class="dz-text">
+          <b id="ex-dz-title">Drop a character settings file here, or click to browse</b>
+          <span id="ex-dz-sub">.json exported from Darkwind client</span>
+        </div>
+      </label>
+      <div class="readout" id="ex-readout"></div>
+
+      <div id="ex-body" style="display:none;">
+        <div class="toolbar">
+          <input class="search" id="ex-search" placeholder="Filter by name or description…" />
+          <label class="dep-toggle"><input type="checkbox" id="ex-auto-deps" checked /> Auto-include dependencies</label>
+          <div class="spacer"></div>
+          <button class="ghost tiny" id="ex-select-none">Deselect all</button>
+        </div>
+        <div class="readout" id="ex-dep-feedback"></div>
+
+        <div class="cat-tabs" id="ex-cat-tabs"></div>
+        <div id="ex-groups"></div>
+
+        <div class="footer-actions">
+          <input class="label-input" id="ex-label" placeholder="Export label, e.g. slei-loot-kit" />
+          <button class="primary" id="ex-download" disabled>Download selection (0)</button>
+          <span class="step-hint" id="ex-count-hint"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= MERGE PANEL ================= -->
+    <div class="panel" id="panel-merge">
+      <h1>Merge into a character</h1>
+      <p class="subtitle">Upload the target character's full settings file, then one or more extracted loadout files to fold in. Anything that would collide with an existing alias, trigger, highlight, or timer gets flagged so you can decide which one wins.</p>
+
+      <label class="dropzone" id="mg-dropzone">
+        <input type="file" id="mg-base-input" accept="application/json,.json" />
+        <div class="dz-icon">&#9670;</div>
+        <div class="dz-text">
+          <b id="mg-dz-title">Drop the target character's full settings file</b>
+          <span id="mg-dz-sub">This is the file the loadout(s) will be merged into</span>
+        </div>
+      </label>
+      <div class="readout" id="mg-base-readout"></div>
+
+      <div id="mg-import-section" style="display:none; margin-top:22px;">
+        <label class="dropzone" id="mg-import-dropzone" style="padding:18px;">
+          <input type="file" id="mg-import-input" accept="application/json,.json" multiple />
+          <div class="dz-icon" style="width:36px;height:36px;font-size:16px;">&#9671;</div>
+          <div class="dz-text">
+            <b>Add extracted loadout file(s)</b>
+            <span>You can add more than one — click again to add another</span>
+          </div>
+        </label>
+        <div class="import-list" id="mg-import-list"></div>
+      </div>
+
+      <div id="mg-review" style="display:none; margin-top: 8px;">
+        <div class="summary-bar" id="mg-summary"></div>
+
+        <div class="bulk-row">
+          <span>Bulk-resolve all conflicts:</span>
+          <button class="tiny" id="mg-bulk-keep">Keep existing</button>
+          <button class="tiny" id="mg-bulk-use">Use imported</button>
+        </div>
+
+        <div class="toolbar" style="margin-top:0;">
+          <input class="search" id="mg-search" placeholder="Filter rows…" />
+        </div>
+
+        <div id="mg-rows"></div>
+
+        <div class="footer-actions">
+          <input class="label-input" id="mg-label" placeholder="Output label, e.g. slei-merged" />
+          <button class="primary" id="mg-download">Download merged file</button>
+          <span class="step-hint" id="mg-hint"></span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------------------------------------------------------
+     Schema definition — shape of a darkwind-client-settings-export.
+     Every shareable category lives at data[path].scopes[scopeUrl][listKey],
+     and each item's `nameField` is what we treat as its identity when
+     checking for conflicts during a merge.
+  --------------------------------------------------------------- */
+  const CATEGORY_DEFS = [
+    { key: 'aliases',    path: 'aliases',    listKey: 'aliases',    nameField: 'trigger',       label: 'Aliases',    color: 'var(--amber)'  },
+    { key: 'highlights', path: 'highlights', listKey: 'rules',      nameField: 'patternSource', label: 'Highlights', color: 'var(--teal)'   },
+    { key: 'triggers',   path: 'triggers',   listKey: 'triggers',   nameField: 'pattern',       label: 'Triggers',   color: 'var(--red)'    },
+    { key: 'timers',     path: 'timers',     listKey: 'timers',     nameField: 'name',          label: 'Timers',     color: 'var(--violet)' },
+    { key: 'functions',  path: 'functions',  listKey: 'functions',  nameField: 'name',          label: 'Functions',  color: 'var(--blue)'   },
+  ];
+  const EXPECTED_FORMAT = 'darkwind-client-settings-export';
+
+  function catDef(key){ return CATEGORY_DEFS.find(c => c.key === key); }
+
+  function normKey(s){ return String(s || '').trim().toLowerCase(); }
+
+  function genId(prefix){ return prefix + '-' + Math.random().toString(36).slice(2, 10); }
+
+  function deepClone(o){ return JSON.parse(JSON.stringify(o)); }
+
+  function download(filename, obj){
+    const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function slugify(s){
+    return String(s || 'export').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'export';
+  }
+
+  function validate(json){
+    if (!json || typeof json !== 'object') return 'File is not a JSON object.';
+    if (json.format !== EXPECTED_FORMAT) return `Unexpected "format" field (got "${json.format}"). Is this a Darkwind client export?`;
+    if (!json.data || typeof json.data !== 'object') return 'Missing "data" section.';
+    return null;
+  }
+
+  // Returns { scopeUrl: [items...] } for a category, across all scopes present.
+  function scopedItems(json, category){
+    const def = catDef(category);
+    const out = {};
+    const container = json.data && json.data[def.path] && json.data[def.path].scopes;
+    if (!container) return out;
+    for (const scopeUrl of Object.keys(container)){
+      const arr = container[scopeUrl] && container[scopeUrl][def.listKey];
+      out[scopeUrl] = Array.isArray(arr) ? arr : [];
+    }
+    return out;
+  }
+
+  function countAll(json){
+    let total = 0;
+    for (const def of CATEGORY_DEFS){
+      const scopes = scopedItems(json, def.key);
+      for (const s of Object.keys(scopes)) total += scopes[s].length;
+    }
+    return total;
+  }
+
+  /* ---------------------------------------------------------------
+     Dependency graph — what does a given item actually need in order
+     to work if moved on its own? Three real signals in this schema:
+
+     1. Exact id references: steps like set_trigger_enabled,
+        set_timer_enabled, control_timer carry a `targetId` pointing
+        straight at another trigger/timer's id. If targetId is empty,
+        some of them fall back to a `target` field holding the other
+        trigger's literal pattern text — we resolve that too.
+     2. Variables: a step reads `$name`. Something else has to be the
+        thing that sets `$name` — either a discrete set_variable step,
+        or an inline `set $name = …` inside a script-type step's text.
+     3. Alias calls: script steps chain sub-commands with `@word`. If
+        `word` happens to match another alias's trigger text, that's
+        a real call-out to it (harmless no-op if it's just a game verb).
+
+     Everything is scoped to the same server URL — an item never
+     depends on something from a different scope.
+  --------------------------------------------------------------- */
+  function stepFieldsText(step){
+    if (!step || typeof step !== 'object') return '';
+    return Object.keys(step)
+      .filter(k => typeof step[k] === 'string')
+      .map(k => step[k])
+      .join('\n');
+  }
+
+  function buildDependencyGraph(json){
+    const graph = new Map(); // itemKey -> Set(itemKey)
+    const meta = new Map();  // itemKey -> { label, category }
+    const scopes = new Set();
+    CATEGORY_DEFS.forEach(def => Object.keys(scopedItems(json, def.key)).forEach(s => scopes.add(s)));
+
+    scopes.forEach(scopeUrl => {
+      const byId = new Map();            // item.id -> itemKey
+      const varDefiners = new Map();     // normalized var name -> [itemKey,...]
+      const aliasByTrigger = new Map();  // normalized alias trigger -> itemKey
+      const triggerByPattern = new Map();// exact pattern text -> itemKey
+      const itemsInScope = []; // { def, item, key }
+
+      CATEGORY_DEFS.forEach(def => {
+        const items = (scopedItems(json, def.key)[scopeUrl]) || [];
+        items.forEach(item => {
+          const key = `${def.key}::${scopeUrl}::${item.id}`;
+          meta.set(key, { label: itemDisplayName(def, item), category: def.key });
+          byId.set(item.id, key);
+          if (def.key === 'aliases' && item.trigger) aliasByTrigger.set(normKey(item.trigger), key);
+          if (def.key === 'triggers' && item.pattern) triggerByPattern.set(item.pattern, key);
+          itemsInScope.push({ def, item, key });
+
+          (item.steps || []).forEach(step => {
+            if (step && step.type === 'set_variable' && step.name){
+              const vn = normKey(step.name);
+              if (!varDefiners.has(vn)) varDefiners.set(vn, []);
+              varDefiners.get(vn).push(key);
+            }
+            const text = stepFieldsText(step);
+            [...text.matchAll(/set\s+\$(\w+)\s*=/g)].forEach(m => {
+              const vn = normKey(m[1]);
+              if (!varDefiners.has(vn)) varDefiners.set(vn, []);
+              varDefiners.get(vn).push(key);
+            });
+          });
+        });
+      });
+
+      itemsInScope.forEach(({ item, key }) => {
+        const deps = new Set();
+        (item.steps || []).forEach(step => {
+          if (!step || typeof step !== 'object') return;
+
+          if (step.targetId){
+            const depKey = byId.get(step.targetId);
+            if (depKey && depKey !== key) deps.add(depKey);
+          } else if (step.target){
+            const depKey = triggerByPattern.get(step.target);
+            if (depKey && depKey !== key) deps.add(depKey);
+          }
+
+          const text = stepFieldsText(step);
+          [...text.matchAll(/\$(\w+)/g)].forEach(m => {
+            const vn = normKey(m[1]);
+            const definers = varDefiners.get(vn);
+            if (definers) definers.forEach(dk => { if (dk !== key) deps.add(dk); });
+          });
+          [...text.matchAll(/@(\w+)/g)].forEach(m => {
+            const an = normKey(m[1]);
+            const depKey = aliasByTrigger.get(an);
+            if (depKey && depKey !== key) deps.add(depKey);
+          });
+        });
+        if (deps.size > 0) graph.set(key, deps);
+      });
+    });
+
+    return { graph, meta };
+  }
+
+  /* ================================================================
+     EXTRACT PANEL
+  ================================================================= */
+  const ex = {
+    source: null,
+    fileLabel: '',
+    selections: new Set(), // keys: `${category}::${scope}::${id}`
+    activeCat: null,
+    collapsed: new Set(),  // keys: `${category}::${scope}::${group}`
+    search: '',
+    depGraph: new Map(),
+    depMeta: new Map(),
+    autoDeps: true,
+  };
+
+  // Adds `key` to the selection, and — if autoDeps is on — walks its
+  // dependency graph breadth-first, pulling in anything it needs.
+  // Returns the list of keys newly added (key included, in BFS order).
+  function selectWithDeps(key){
+    const added = [];
+    const queue = [key];
+    const seen = new Set();
+    while (queue.length){
+      const k = queue.shift();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (!ex.selections.has(k)){
+        ex.selections.add(k);
+        added.push(k);
+      }
+      if (!ex.autoDeps) break; // only the item itself, no cascade
+      const deps = ex.depGraph.get(k);
+      if (deps) deps.forEach(d => { if (!seen.has(d)) queue.push(d); });
+    }
+    return added;
+  }
+
+  function showDepFeedback(added, rootKey){
+    const el = document.getElementById('ex-dep-feedback');
+    const extras = added.filter(k => k !== rootKey);
+    if (extras.length === 0){ el.classList.remove('show'); return; }
+    const labels = extras.map(k => (ex.depMeta.get(k) || {}).label || k);
+    el.innerHTML = `<span class="prompt">&gt;</span> also included ${extras.length} dependenc${extras.length === 1 ? 'y' : 'ies'}: ${labels.map(escapeHtml).join(', ')}`;
+    el.classList.add('show');
+  }
+
+  const exDropzone = document.getElementById('ex-dropzone');
+  const exFileInput = document.getElementById('ex-file-input');
+  const exReadout = document.getElementById('ex-readout');
+  const exBody = document.getElementById('ex-body');
+  const exCatTabs = document.getElementById('ex-cat-tabs');
+  const exGroups = document.getElementById('ex-groups');
+  const exSearch = document.getElementById('ex-search');
+  const exLabel = document.getElementById('ex-label');
+  const exDownloadBtn = document.getElementById('ex-download');
+  const exCountHint = document.getElementById('ex-count-hint');
+
+  ['dragover','dragenter'].forEach(evt => exDropzone.addEventListener(evt, e => { e.preventDefault(); exDropzone.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(evt => exDropzone.addEventListener(evt, e => { e.preventDefault(); exDropzone.classList.remove('drag'); }));
+  exDropzone.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) loadExtractFile(f); });
+  exFileInput.addEventListener('change', e => { const f = e.target.files[0]; if (f) loadExtractFile(f); });
+
+  function loadExtractFile(file){
+    const reader = new FileReader();
+    reader.onload = () => {
+      let json;
+      try { json = JSON.parse(reader.result); }
+      catch(err){ showExReadoutError('Could not parse that file as JSON.'); return; }
+      const err = validate(json);
+      if (err){ showExReadoutError(err); return; }
+
+      ex.source = json;
+      ex.fileLabel = file.name.replace(/\.json$/i, '');
+      ex.selections = new Set();
+      ex.activeCat = CATEGORY_DEFS[0].key;
+      ex.collapsed = new Set();
+      const { graph, meta } = buildDependencyGraph(json);
+      ex.depGraph = graph;
+      ex.depMeta = meta;
+      exLabel.value = ex.fileLabel;
+
+      document.getElementById('ex-dz-title').textContent = file.name;
+      document.getElementById('ex-dz-sub').textContent = 'Loaded — click to load a different file';
+
+      const total = countAll(json);
+      const parts = CATEGORY_DEFS.map(d => {
+        const scopes = scopedItems(json, d.key);
+        const n = Object.values(scopes).reduce((a,b) => a + b.length, 0);
+        return `${n} ${d.label.toLowerCase()}`;
+      }).join(', ');
+      exReadout.classList.add('show');
+      exReadout.innerHTML = `<span class="prompt">&gt;</span> loaded <span class="file">${file.name}</span><br>&gt; found ${total} items — ${parts}`;
+
+      exBody.style.display = 'block';
+      renderExtractCatTabs();
+      renderExtractGroups();
+      updateExtractFooter();
+    };
+    reader.readAsText(file);
+  }
+
+  function showExReadoutError(msg){
+    exReadout.classList.add('show');
+    exReadout.innerHTML = `<span class="prompt">&gt;</span> error: ${msg}`;
+    exBody.style.display = 'none';
+  }
+
+  function renderExtractCatTabs(){
+    exCatTabs.innerHTML = '';
+    CATEGORY_DEFS.forEach(def => {
+      const scopes = scopedItems(ex.source, def.key);
+      const n = Object.values(scopes).reduce((a,b)=>a+b.length,0);
+      const selectedCount = [...ex.selections].filter(k => k.startsWith(def.key+'::')).length;
+      const tab = document.createElement('div');
+      tab.className = 'cat-tab' + (def.key === ex.activeCat ? ' active' : '') + (selectedCount > 0 ? ' selected-some' : '');
+      tab.innerHTML = `<span class="swatch" style="background:${def.color}"></span>${def.label} <span class="count">${selectedCount ? selectedCount+'/' : ''}${n}</span>`;
+      tab.addEventListener('click', () => { ex.activeCat = def.key; renderExtractCatTabs(); renderExtractGroups(); });
+      exCatTabs.appendChild(tab);
+    });
+  }
+
+  function itemGroup(item){
+    const g = (item.group || '').trim();
+    return g || null;
+  }
+
+  function itemDisplayName(def, item){
+    return item[def.nameField] || item.name || item.id || '(unnamed)';
+  }
+
+  function renderExtractGroups(){
+    exGroups.innerHTML = '';
+    if (!ex.activeCat) return;
+    const def = catDef(ex.activeCat);
+    const scopes = scopedItems(ex.source, ex.activeCat);
+    const scopeUrls = Object.keys(scopes);
+
+    let anyRendered = false;
+
+    scopeUrls.forEach(scopeUrl => {
+      const items = scopes[scopeUrl].filter(item => {
+        if (!ex.search) return true;
+        const q = ex.search.toLowerCase();
+        return itemDisplayName(def, item).toLowerCase().includes(q) ||
+               (item.description || '').toLowerCase().includes(q);
+      });
+      if (items.length === 0) return;
+
+      // group by `group` field
+      const groups = new Map();
+      items.forEach(item => {
+        const g = itemGroup(item);
+        if (!groups.has(g)) groups.set(g, []);
+        groups.get(g).push(item);
+      });
+
+      // sorted: named groups alphabetically, ungrouped last
+      const groupNames = [...groups.keys()].sort((a,b) => {
+        if (a === null) return 1; if (b === null) return -1;
+        return a.localeCompare(b);
+      });
+
+      groupNames.forEach(gname => {
+        anyRendered = true;
+        const groupItems = groups.get(gname);
+        const collapseKey = `${ex.activeCat}::${scopeUrl}::${gname}`;
+        const isCollapsed = ex.collapsed.has(collapseKey);
+
+        const groupEl = document.createElement('div');
+        groupEl.className = 'group' + (isCollapsed ? ' collapsed' : '');
+
+        const selectedInGroup = groupItems.filter(item => ex.selections.has(`${ex.activeCat}::${scopeUrl}::${item.id}`)).length;
+
+        const head = document.createElement('div');
+        head.className = 'group-head';
+        head.innerHTML = `
+          <span class="chev">&#9660;</span>
+          <input type="checkbox" ${selectedInGroup === groupItems.length ? 'checked' : ''} data-group-toggle />
+          <span class="gname">${gname ? gname : '<span class="empty">ungrouped</span>'}</span>
+          <span class="gcount">${selectedInGroup}/${groupItems.length}</span>
+        `;
+        head.addEventListener('click', (e) => {
+          if (e.target.matches('input[type=checkbox]')) return;
+          if (isCollapsed) ex.collapsed.delete(collapseKey); else ex.collapsed.add(collapseKey);
+          renderExtractGroups();
+        });
+        head.querySelector('input').addEventListener('click', (e) => {
+          e.stopPropagation();
+          const shouldSelect = selectedInGroup !== groupItems.length;
+          const rootKeys = new Set(groupItems.map(item => `${ex.activeCat}::${scopeUrl}::${item.id}`));
+          let allAdded = [];
+          rootKeys.forEach(key => {
+            if (shouldSelect) allAdded = allAdded.concat(selectWithDeps(key));
+            else ex.selections.delete(key);
+          });
+          const extraDeps = allAdded.filter(k => !rootKeys.has(k));
+          if (shouldSelect && extraDeps.length > 0){
+            const el = document.getElementById('ex-dep-feedback');
+            const labels = extraDeps.map(k => (ex.depMeta.get(k) || {}).label || k);
+            el.innerHTML = `<span class="prompt">&gt;</span> also included ${extraDeps.length} dependenc${extraDeps.length === 1 ? 'y' : 'ies'}: ${labels.map(escapeHtml).join(', ')}`;
+            el.classList.add('show');
+          }
+          renderExtractCatTabs(); renderExtractGroups(); updateExtractFooter();
+        });
+        groupEl.appendChild(head);
+
+        const body = document.createElement('div');
+        body.className = 'group-body';
+        groupItems.forEach(item => {
+          const key = `${ex.activeCat}::${scopeUrl}::${item.id}`;
+          const row = document.createElement('div');
+          row.className = 'item-row';
+          const disabledCls = item.enabled === false ? ' disabled' : '';
+
+          const deps = ex.depGraph.get(key);
+          let depsHtml = '';
+          if (deps && deps.size > 0){
+            const parts = [...deps].map(d => {
+              const m = ex.depMeta.get(d);
+              const label = m ? m.label : d;
+              const missing = !ex.selections.has(d);
+              return `<span class="${missing ? 'dep-missing' : 'dep-ok'}">${escapeHtml(label)}</span>`;
+            });
+            depsHtml = `<div class="item-deps">needs: ${parts.join(', ')}</div>`;
+          }
+
+          row.innerHTML = `
+            <input type="checkbox" ${ex.selections.has(key) ? 'checked' : ''} data-item-key="${key}" />
+            <div class="item-main">
+              <span class="item-name${disabledCls}">${escapeHtml(itemDisplayName(def, item))}</span>${item.enabled === false ? '<span class="item-tag">disabled</span>' : ''}
+              ${item.description ? `<div class="item-desc">${escapeHtml(item.description)}</div>` : ''}
+              ${depsHtml}
+            </div>
+          `;
+          row.querySelector('input').addEventListener('change', (e) => {
+            if (e.target.checked){
+              const added = selectWithDeps(key);
+              showDepFeedback(added, key);
+              if (added.length > 1){
+                // dependencies may live in other groups/categories — full re-render needed
+                renderExtractCatTabs(); renderExtractGroups(); updateExtractFooter();
+                return;
+              }
+            } else {
+              ex.selections.delete(key);
+              document.getElementById('ex-dep-feedback').classList.remove('show');
+            }
+            renderExtractCatTabs();
+            // update just this group's counter without a full re-render
+            const gcount = head.querySelector('.gcount');
+            const sel = groupItems.filter(it => ex.selections.has(`${ex.activeCat}::${scopeUrl}::${it.id}`)).length;
+            gcount.textContent = `${sel}/${groupItems.length}`;
+            head.querySelector('input').checked = sel === groupItems.length;
+            updateExtractFooter();
+          });
+          body.appendChild(row);
+        });
+        groupEl.appendChild(body);
+        exGroups.appendChild(groupEl);
+      });
+    });
+
+    if (!anyRendered){
+      exGroups.innerHTML = `<div class="empty-state">No ${catDef(ex.activeCat).label.toLowerCase()} match${ex.search ? ' your filter' : ' — this character has none saved'}.</div>`;
+    }
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  exSearch.addEventListener('input', () => { ex.search = exSearch.value; renderExtractGroups(); });
+
+  document.getElementById('ex-select-none').addEventListener('click', () => {
+    ex.selections.clear();
+    document.getElementById('ex-dep-feedback').classList.remove('show');
+    renderExtractCatTabs(); renderExtractGroups(); updateExtractFooter();
+  });
+
+  document.getElementById('ex-auto-deps').addEventListener('change', (e) => {
+    ex.autoDeps = e.target.checked;
+  });
+
+  function updateExtractFooter(){
+    const n = ex.selections.size;
+    exDownloadBtn.disabled = n === 0;
+    exDownloadBtn.textContent = `Download selection (${n})`;
+    exCountHint.textContent = n === 0 ? 'Select at least one item to export.' : '';
+  }
+
+  exDownloadBtn.addEventListener('click', () => {
+    if (ex.selections.size === 0) return;
+    const output = {
+      format: EXPECTED_FORMAT,
+      formatVersion: ex.source.formatVersion || 1,
+      exportedAt: new Date().toISOString(),
+      clientVersion: ex.source.clientVersion || null,
+      partialExport: true,
+      sourceLabel: exLabel.value.trim() || ex.fileLabel,
+      data: {}
+    };
+    CATEGORY_DEFS.forEach(def => {
+      const scopes = scopedItems(ex.source, def.key);
+      const outScopes = {};
+      Object.keys(scopes).forEach(scopeUrl => {
+        const picked = scopes[scopeUrl].filter(item => ex.selections.has(`${def.key}::${scopeUrl}::${item.id}`));
+        if (picked.length > 0){
+          outScopes[scopeUrl] = { [def.listKey]: picked };
+        }
+      });
+      if (Object.keys(outScopes).length > 0){
+        output.data[def.path] = { scopes: outScopes };
+      }
+    });
+    const filename = `${slugify(exLabel.value.trim() || ex.fileLabel)}-loadout-${new Date().toISOString().slice(0,10)}.json`;
+    download(filename, output);
+  });
+
+  /* ================================================================
+     MERGE PANEL
+  ================================================================= */
+  const mg = {
+    base: null,
+    baseFilename: '',
+    imports: [], // { fileName, data }
+    rows: [],    // computed rows, see computeMergeRows()
+    resolutions: new Map(), // rowKey -> 'keep-existing' | 'use-imported' | 'include' | 'exclude'
+    search: '',
+  };
+
+  const mgDropzone = document.getElementById('mg-dropzone');
+  const mgBaseInput = document.getElementById('mg-base-input');
+  const mgBaseReadout = document.getElementById('mg-base-readout');
+  const mgImportSection = document.getElementById('mg-import-section');
+  const mgImportDropzone = document.getElementById('mg-import-dropzone');
+  const mgImportInput = document.getElementById('mg-import-input');
+  const mgImportList = document.getElementById('mg-import-list');
+  const mgReview = document.getElementById('mg-review');
+  const mgSummary = document.getElementById('mg-summary');
+  const mgRows = document.getElementById('mg-rows');
+  const mgSearch = document.getElementById('mg-search');
+  const mgLabel = document.getElementById('mg-label');
+  const mgHint = document.getElementById('mg-hint');
+
+  ['dragover','dragenter'].forEach(evt => mgDropzone.addEventListener(evt, e => { e.preventDefault(); mgDropzone.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(evt => mgDropzone.addEventListener(evt, e => { e.preventDefault(); mgDropzone.classList.remove('drag'); }));
+  mgDropzone.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) loadBaseFile(f); });
+  mgBaseInput.addEventListener('change', e => { const f = e.target.files[0]; if (f) loadBaseFile(f); });
+
+  function loadBaseFile(file){
+    const reader = new FileReader();
+    reader.onload = () => {
+      let json;
+      try { json = JSON.parse(reader.result); }
+      catch(err){ showMgBaseError('Could not parse that file as JSON.'); return; }
+      const err = validate(json);
+      if (err){ showMgBaseError(err); return; }
+
+      mg.base = json;
+      mg.baseFilename = file.name;
+      mg.imports = [];
+      mg.resolutions = new Map();
+
+      document.getElementById('mg-dz-title').textContent = file.name;
+      document.getElementById('mg-dz-sub').textContent = 'Loaded — click to load a different target file';
+
+      const total = countAll(json);
+      mgBaseReadout.classList.add('show');
+      mgBaseReadout.innerHTML = `<span class="prompt">&gt;</span> loaded target <span class="file">${file.name}</span> — ${total} existing items`;
+      mgLabel.value = file.name.replace(/\.json$/i, '') + '-merged';
+
+      mgImportSection.style.display = 'block';
+      renderImportList();
+      recomputeAndRenderMerge();
+    };
+    reader.readAsText(file);
+  }
+
+  function showMgBaseError(msg){
+    mgBaseReadout.classList.add('show');
+    mgBaseReadout.innerHTML = `<span class="prompt">&gt;</span> error: ${msg}`;
+    mgImportSection.style.display = 'none';
+    mgReview.style.display = 'none';
+  }
+
+  ['dragover','dragenter'].forEach(evt => mgImportDropzone.addEventListener(evt, e => { e.preventDefault(); mgImportDropzone.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(evt => mgImportDropzone.addEventListener(evt, e => { e.preventDefault(); mgImportDropzone.classList.remove('drag'); }));
+  mgImportDropzone.addEventListener('drop', e => { loadImportFiles(e.dataTransfer.files); });
+  mgImportInput.addEventListener('change', e => { loadImportFiles(e.target.files); });
+
+  function loadImportFiles(fileList){
+    [...fileList].forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        let json;
+        try { json = JSON.parse(reader.result); }
+        catch(err){ alert(`${file.name}: could not parse as JSON.`); return; }
+        const err = validate(json);
+        if (err){ alert(`${file.name}: ${err}`); return; }
+        mg.imports.push({ fileName: file.name, data: json });
+        renderImportList();
+        recomputeAndRenderMerge();
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  function renderImportList(){
+    mgImportList.innerHTML = '';
+    mg.imports.forEach((imp, idx) => {
+      const n = countAll(imp.data);
+      const row = document.createElement('div');
+      row.className = 'import-file';
+      row.innerHTML = `
+        <span class="fname">${escapeHtml(imp.fileName)}</span>
+        <span class="fmeta">${n} items</span>
+        <button data-remove="${idx}">Remove</button>
+      `;
+      row.querySelector('button').addEventListener('click', () => {
+        mg.imports.splice(idx, 1);
+        renderImportList();
+        recomputeAndRenderMerge();
+      });
+      mgImportList.appendChild(row);
+    });
+  }
+
+  // Build rows: for each category+scope, walk base items first (establishing
+  // the "current occupant" of each identity key), then each import file in
+  // order. An item whose key is already occupied is a conflict; otherwise
+  // it's new and takes over that key for subsequent imports.
+  function computeMergeRows(){
+    const rows = [];
+    if (!mg.base) return rows;
+
+    CATEGORY_DEFS.forEach(def => {
+      // gather every scope url seen across base + all imports for this category
+      const scopeUrls = new Set(Object.keys(scopedItems(mg.base, def.key)));
+      mg.imports.forEach(imp => Object.keys(scopedItems(imp.data, def.key)).forEach(s => scopeUrls.add(s)));
+
+      scopeUrls.forEach(scopeUrl => {
+        const occupied = new Map(); // normKey -> { item, source: 'base' | fileName }
+        const baseItems = (scopedItems(mg.base, def.key)[scopeUrl]) || [];
+        baseItems.forEach(item => occupied.set(normKey(item[def.nameField]), { item, source: 'base' }));
+
+        mg.imports.forEach(imp => {
+          const impItems = (scopedItems(imp.data, def.key)[scopeUrl]) || [];
+          impItems.forEach(item => {
+            const key = normKey(item[def.nameField]);
+            const rowKey = `${def.key}::${scopeUrl}::${key}::${imp.fileName}::${item.id}`;
+            if (occupied.has(key)){
+              const existing = occupied.get(key);
+              rows.push({
+                rowKey, category: def.key, scope: scopeUrl, type: 'conflict',
+                item, sourceFile: imp.fileName,
+                existingItem: existing.item, existingSource: existing.source,
+              });
+              // occupant does not change here — final winner decided by resolution at build time
+            } else {
+              occupied.set(key, { item, source: imp.fileName });
+              rows.push({
+                rowKey, category: def.key, scope: scopeUrl, type: 'new',
+                item, sourceFile: imp.fileName,
+              });
+            }
+          });
+        });
+      });
+    });
+    return rows;
+  }
+
+  function defaultResolution(row){
+    return row.type === 'conflict' ? 'keep-existing' : 'include';
+  }
+
+  function recomputeAndRenderMerge(){
+    mg.rows = computeMergeRows();
+    // seed resolutions for new rows, keep existing choices for rows still present
+    const stillPresent = new Set(mg.rows.map(r => r.rowKey));
+    [...mg.resolutions.keys()].forEach(k => { if (!stillPresent.has(k)) mg.resolutions.delete(k); });
+    mg.rows.forEach(r => { if (!mg.resolutions.has(r.rowKey)) mg.resolutions.set(r.rowKey, defaultResolution(r)); });
+
+    mgReview.style.display = mg.rows.length > 0 ? 'block' : (mg.imports.length > 0 ? 'block' : 'none');
+    renderMergeSummary();
+    renderMergeRows();
+  }
+
+  function renderMergeSummary(){
+    const newCount = mg.rows.filter(r => r.type === 'new').length;
+    const conflictCount = mg.rows.filter(r => r.type === 'conflict').length;
+    mgSummary.innerHTML = `
+      <div class="summary-chip new"><span class="n">${newCount}</span><span class="l">New items</span></div>
+      <div class="summary-chip conflict"><span class="n">${conflictCount}</span><span class="l">Conflicts</span></div>
+      <div class="summary-chip"><span class="n">${mg.imports.length}</span><span class="l">Loadout file${mg.imports.length===1?'':'s'}</span></div>
+    `;
+  }
+
+  document.getElementById('mg-bulk-keep').addEventListener('click', () => {
+    mg.rows.filter(r => r.type === 'conflict').forEach(r => mg.resolutions.set(r.rowKey, 'keep-existing'));
+    renderMergeRows();
+  });
+  document.getElementById('mg-bulk-use').addEventListener('click', () => {
+    mg.rows.filter(r => r.type === 'conflict').forEach(r => mg.resolutions.set(r.rowKey, 'use-imported'));
+    renderMergeRows();
+  });
+  mgSearch.addEventListener('input', () => { mg.search = mgSearch.value; renderMergeRows(); });
+
+  function renderMergeRows(){
+    mgRows.innerHTML = '';
+    const q = mg.search.toLowerCase();
+    // conflicts first, then new — within each, grouped by category for readability
+    const sorted = [...mg.rows].sort((a,b) => {
+      if (a.type !== b.type) return a.type === 'conflict' ? -1 : 1;
+      return a.category.localeCompare(b.category);
+    });
+    const filtered = sorted.filter(r => {
+      if (!q) return true;
+      const def = catDef(r.category);
+      return itemDisplayName(def, r.item).toLowerCase().includes(q) || r.sourceFile.toLowerCase().includes(q);
+    });
+
+    if (filtered.length === 0){
+      mgRows.innerHTML = `<div class="empty-state">${mg.rows.length === 0 ? 'Add a loadout file above to see what would change.' : 'No rows match your filter.'}</div>`;
+      return;
+    }
+
+    filtered.forEach(row => {
+      const def = catDef(row.category);
+      const el = document.createElement('div');
+      el.className = 'row-block ' + (row.type === 'conflict' ? 'conflict' : 'newitem');
+      const resolution = mg.resolutions.get(row.rowKey);
+
+      if (row.type === 'conflict'){
+        el.innerHTML = `
+          <div class="row-top">
+            <div>
+              <div class="row-cat" style="color:${def.color}">${def.label}</div>
+              <div class="row-title">${escapeHtml(itemDisplayName(def, row.item))}</div>
+              <div class="row-src">from ${escapeHtml(row.sourceFile)} — conflicts with ${row.existingSource === 'base' ? 'existing item' : 'an earlier loadout file'}</div>
+            </div>
+            <div class="choice">
+              <button data-choice="keep-existing" class="${resolution === 'keep-existing' ? 'on' : ''}">Keep existing</button>
+              <button data-choice="use-imported" class="${resolution === 'use-imported' ? 'on' : ''}">Use imported</button>
+            </div>
+          </div>
+          <div class="row-compare">
+            <div class="side"><div class="lbl">Existing</div><div class="desc">${escapeHtml(row.existingItem.description || '—')}</div></div>
+            <div class="side"><div class="lbl">Imported</div><div class="desc">${escapeHtml(row.item.description || '—')}</div></div>
+          </div>
+        `;
+        el.querySelectorAll('.choice button').forEach(btn => {
+          btn.addEventListener('click', () => {
+            mg.resolutions.set(row.rowKey, btn.dataset.choice);
+            renderMergeRows();
+          });
+        });
+      } else {
+        el.innerHTML = `
+          <div class="row-top">
+            <div>
+              <div class="row-cat" style="color:${def.color}">${def.label}</div>
+              <div class="row-title">${escapeHtml(itemDisplayName(def, row.item))}</div>
+              <div class="row-src">from ${escapeHtml(row.sourceFile)} — new, no conflict</div>
+            </div>
+            <div class="choice">
+              <button data-choice="include" class="${resolution === 'include' ? 'on' : ''}">Include</button>
+              <button data-choice="exclude" class="${resolution === 'exclude' ? 'on' : ''}">Exclude</button>
+            </div>
+          </div>
+        `;
+        el.querySelectorAll('.choice button').forEach(btn => {
+          btn.addEventListener('click', () => {
+            mg.resolutions.set(row.rowKey, btn.dataset.choice);
+            renderMergeRows();
+          });
+        });
+      }
+      mgRows.appendChild(el);
+    });
+  }
+
+  document.getElementById('mg-download').addEventListener('click', () => {
+    if (!mg.base){ mgHint.textContent = 'Load a target file first.'; return; }
+    const output = deepClone(mg.base);
+
+    // finalItems[category][scope] -> array (starts as copy of base's array)
+    const finalItems = {};
+    const finalIndex = {}; // category::scope -> Map(normKey -> array index)
+
+    CATEGORY_DEFS.forEach(def => {
+      const scopes = scopedItems(mg.base, def.key);
+      Object.keys(scopes).forEach(scopeUrl => {
+        const ck = `${def.key}::${scopeUrl}`;
+        finalItems[ck] = [...scopes[scopeUrl]];
+        const idx = new Map();
+        finalItems[ck].forEach((item, i) => idx.set(normKey(item[def.nameField]), i));
+        finalIndex[ck] = idx;
+      });
+    });
+
+    // replay rows in the same order they were computed
+    mg.rows.forEach(row => {
+      const ck = `${row.category}::${row.scope}`;
+      if (!finalItems[ck]){ finalItems[ck] = []; finalIndex[ck] = new Map(); }
+      const resolution = mg.resolutions.get(row.rowKey) || defaultResolution(row);
+      const def = catDef(row.category);
+      const key = normKey(row.item[def.nameField]);
+
+      if (row.type === 'new'){
+        if (resolution === 'include'){
+          const newItem = deepClone(row.item);
+          // avoid id collisions with anything already in this array
+          if (finalItems[ck].some(it => it.id === newItem.id)) newItem.id = genId(def.key.slice(0,-1) || 'item');
+          finalItems[ck].push(newItem);
+          finalIndex[ck].set(key, finalItems[ck].length - 1);
+        }
+      } else { // conflict
+        if (resolution === 'use-imported'){
+          const newItem = deepClone(row.item);
+          const existingIdx = finalIndex[ck].get(key);
+          if (existingIdx !== undefined){
+            if (finalItems[ck].some((it, i) => it.id === newItem.id && i !== existingIdx)) newItem.id = genId(def.key.slice(0,-1) || 'item');
+            finalItems[ck][existingIdx] = newItem;
+          } else {
+            // occupant was from an earlier import row not yet materialized as an index — just push
+            if (finalItems[ck].some(it => it.id === newItem.id)) newItem.id = genId(def.key.slice(0,-1) || 'item');
+            finalItems[ck].push(newItem);
+            finalIndex[ck].set(key, finalItems[ck].length - 1);
+          }
+        }
+        // keep-existing: no change needed
+      }
+    });
+
+    // write finalItems back into output
+    CATEGORY_DEFS.forEach(def => {
+      Object.keys(finalItems).forEach(ck => {
+        const [catKey, scopeUrl] = ck.split('::');
+        if (catKey !== def.key) return;
+        if (!finalItems[ck] || finalItems[ck].length === 0) return;
+        if (!output.data[def.path]) output.data[def.path] = { scopes: {} };
+        if (!output.data[def.path].scopes) output.data[def.path].scopes = {};
+        if (!output.data[def.path].scopes[scopeUrl]) output.data[def.path].scopes[scopeUrl] = {};
+        output.data[def.path].scopes[scopeUrl][def.listKey] = finalItems[ck];
+      });
+    });
+
+    output.exportedAt = new Date().toISOString();
+    delete output.partialExport;
+    delete output.sourceLabel;
+
+    const filename = `${slugify(mgLabel.value.trim() || 'merged')}-${new Date().toISOString().slice(0,10)}.json`;
+    download(filename, output);
+    mgHint.textContent = `Downloaded ${filename}`;
+  });
+
+  /* ================================================================
+     NAV
+  ================================================================= */
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      item.classList.add('active');
+      document.getElementById('panel-' + item.dataset.panel).classList.add('active');
+    });
+  });
+
+})();
+</script>
+</body>
+</html>
