@@ -396,7 +396,7 @@
         <div class="brand-word"><b>loadout</b> transfer</div>
       </div>
       <div class="brand-sub">for <b>Darkwind</b> · darkflow client</div>
-      <div class="brand-version">v0.1.0</div>
+      <div class="brand-version">v0.1.1</div>
     </div>
     <div class="nav">
       <div class="nav-item active" data-panel="extract"><span class="num">01</span> Extract</div>
@@ -1129,9 +1129,17 @@
   }
 
   // Build rows: for each category+scope, walk base items first (establishing
-  // the "current occupant" of each identity key), then each import file in
-  // order. An item whose key is already occupied is a conflict; otherwise
-  // it's new and takes over that key for subsequent imports.
+  // the "current occupant" of each id), then each import file in order. An
+  // item whose id is already occupied is a conflict; otherwise it's new and
+  // takes over that id for subsequent imports.
+  //
+  // Identity is the item's `id`, not its display field (pattern/trigger/name).
+  // Darkflow itself treats id as the true identity — steps reference other
+  // items by targetId — and distinct items can legitimately share display
+  // text. E.g. a character can have two different triggers both with pattern
+  // "You killed %1." (a normal one and an ED-bot variant), mutually toggled
+  // on/off by aliases; matching on pattern text would wrongly treat the
+  // second as a conflicting duplicate of the first instead of a new item.
   function computeMergeRows(){
     const rows = [];
     if (!mg.base) return rows;
@@ -1142,17 +1150,16 @@
       mg.imports.forEach(imp => Object.keys(scopedItems(imp.data, def.key)).forEach(s => scopeUrls.add(s)));
 
       scopeUrls.forEach(scopeUrl => {
-        const occupied = new Map(); // normKey -> { item, source: 'base' | fileName }
+        const occupied = new Map(); // id -> { item, source: 'base' | fileName }
         const baseItems = (scopedItems(mg.base, def.key)[scopeUrl]) || [];
-        baseItems.forEach(item => occupied.set(normKey(item[def.nameField]), { item, source: 'base' }));
+        baseItems.forEach(item => occupied.set(item.id, { item, source: 'base' }));
 
         mg.imports.forEach(imp => {
           const impItems = (scopedItems(imp.data, def.key)[scopeUrl]) || [];
           impItems.forEach(item => {
-            const key = normKey(item[def.nameField]);
-            const rowKey = `${def.key}::${scopeUrl}::${key}::${imp.fileName}::${item.id}`;
-            if (occupied.has(key)){
-              const existing = occupied.get(key);
+            const rowKey = `${def.key}::${scopeUrl}::${item.id}::${imp.fileName}`;
+            if (occupied.has(item.id)){
+              const existing = occupied.get(item.id);
               rows.push({
                 rowKey, category: def.key, scope: scopeUrl, type: 'conflict',
                 item, sourceFile: imp.fileName,
@@ -1160,7 +1167,7 @@
               });
               // occupant does not change here — final winner decided by resolution at build time
             } else {
-              occupied.set(key, { item, source: imp.fileName });
+              occupied.set(item.id, { item, source: imp.fileName });
               rows.push({
                 rowKey, category: def.key, scope: scopeUrl, type: 'new',
                 item, sourceFile: imp.fileName,
@@ -1289,7 +1296,7 @@
 
     // finalItems[category][scope] -> array (starts as copy of base's array)
     const finalItems = {};
-    const finalIndex = {}; // category::scope -> Map(normKey -> array index)
+    const finalIndex = {}; // category::scope -> Map(id -> array index)
 
     CATEGORY_DEFS.forEach(def => {
       const scopes = scopedItems(mg.base, def.key);
@@ -1297,7 +1304,7 @@
         const ck = `${def.key}::${scopeUrl}`;
         finalItems[ck] = [...scopes[scopeUrl]];
         const idx = new Map();
-        finalItems[ck].forEach((item, i) => idx.set(normKey(item[def.nameField]), i));
+        finalItems[ck].forEach((item, i) => idx.set(item.id, i));
         finalIndex[ck] = idx;
       });
     });
@@ -1308,7 +1315,6 @@
       if (!finalItems[ck]){ finalItems[ck] = []; finalIndex[ck] = new Map(); }
       const resolution = mg.resolutions.get(row.rowKey) || defaultResolution(row);
       const def = catDef(row.category);
-      const key = normKey(row.item[def.nameField]);
 
       if (row.type === 'new'){
         if (resolution === 'include'){
@@ -1316,20 +1322,18 @@
           // avoid id collisions with anything already in this array
           if (finalItems[ck].some(it => it.id === newItem.id)) newItem.id = genId(def.key.slice(0,-1) || 'item');
           finalItems[ck].push(newItem);
-          finalIndex[ck].set(key, finalItems[ck].length - 1);
+          finalIndex[ck].set(newItem.id, finalItems[ck].length - 1);
         }
-      } else { // conflict
+      } else { // conflict — row.item.id is the same id as the existing occupant by definition
         if (resolution === 'use-imported'){
           const newItem = deepClone(row.item);
-          const existingIdx = finalIndex[ck].get(key);
+          const existingIdx = finalIndex[ck].get(row.item.id);
           if (existingIdx !== undefined){
-            if (finalItems[ck].some((it, i) => it.id === newItem.id && i !== existingIdx)) newItem.id = genId(def.key.slice(0,-1) || 'item');
             finalItems[ck][existingIdx] = newItem;
           } else {
             // occupant was from an earlier import row not yet materialized as an index — just push
-            if (finalItems[ck].some(it => it.id === newItem.id)) newItem.id = genId(def.key.slice(0,-1) || 'item');
             finalItems[ck].push(newItem);
-            finalIndex[ck].set(key, finalItems[ck].length - 1);
+            finalIndex[ck].set(newItem.id, finalItems[ck].length - 1);
           }
         }
         // keep-existing: no change needed
